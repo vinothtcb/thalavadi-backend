@@ -22,6 +22,6 @@
 - [ ] Change the PostgreSQL password from the `docker-compose.yml` default.
 - [ ] Serve the app over **HTTPS** (e.g. behind Nginx/Caddy, or a platform that terminates TLS).
 - [ ] Restrict `cors()` in `server.js` to your actual frontend domain instead of allowing all origins.
-- [ ] Move `OTP_CHANNEL` off the console-log fallback to a real channel (Kannel or email — see README).
+- [ ] Move off the console-log OTP fallback to real SMTP credentials (see README).
 - [ ] Consider moving image storage off the database (e.g. to object storage) if the gallery/classifieds grow large — base64-in-Postgres is fine for a small community app but doesn't scale indefinitely.
 - [ ] Review the general rate limit (`500 req / 15 min`) against your real expected traffic and tune if needed.

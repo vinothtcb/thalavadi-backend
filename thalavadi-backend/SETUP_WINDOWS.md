@@ -44,7 +44,7 @@
    ```
    JWT_SECRET=change_this_to_something_long_and_random_39fj29fj2
    ```
-3. Leave `OTP_CHANNEL=kannel` for now — with nothing else configured, OTP
+3. Leave SMTP settings blank for now — with nothing configured, OTP
    codes will just print to the terminal, which is perfect for local testing.
 
 ## Part 4 — Start the backend
@@ -114,9 +114,8 @@ laptop:
 ## Part 7 — Before publishing, change these
 
 - [ ] Set a strong, unique `JWT_SECRET` (never reuse the example one).
-- [ ] Set `OTP_CHANNEL` to `kannel` (with a real Kannel gateway configured)
-      or `email` (with real SMTP credentials) — don't ship with OTPs only
-      printing to a console.
+- [ ] Set real SMTP credentials (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`) —
+      don't ship with OTPs only printing to a console.
 - [ ] Change the Postgres password in `docker-compose.yml` / `.env` from
       `postgres` to something strong, or use a managed database.
 - [ ] Set `NODE_ENV=production` and run behind HTTPS (e.g. a reverse proxy

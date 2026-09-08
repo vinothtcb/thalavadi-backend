@@ -35,8 +35,7 @@ paid SaaS account:
 | PostgreSQL       | PostgreSQL License (permissive) | Database        |
 | node-postgres (`pg`) | MIT   | Postgres driver                   |
 | jsonwebtoken     | MIT        | JWT signing/verification          |
-| Nodemailer       | MIT        | Email OTP delivery                |
-| Kannel           | GPL v2     | Self-hosted SMS gateway (optional)|
+| Nodemailer       | MIT        | Email OTP delivery (the only delivery channel) |
 | Docker / Compose | Apache 2.0 | Local dev + deployment            |
 
 ## 3. Folder structure
@@ -73,25 +72,30 @@ See `db/schema.sql` for full column definitions, indexes, and foreign keys.
 
 ## 5. Authentication flow (OTP-based, no passwords)
 
-1. `POST /api/auth/send-otp { phone }` — generates a 4-digit code, stores it
-   in `otp_codes` with a 5-minute expiry, and delivers it through an
-   open-source channel (`utils/otp.js`), selected by `OTP_CHANNEL`:
-   - **`kannel`** (default) — [Kannel](https://www.kannel.org) is a free,
-     open-source SMS gateway you self-host on a Linux box with a GSM
-     modem/SIM (or an SMPP-speaking provider). No SaaS lock-in.
-   - **`email`** — sends the code by email via
-     [Nodemailer](https://nodemailer.com) (MIT-licensed) against any SMTP
-     server, including a self-hosted one like Postfix.
-   - If neither is configured, it logs the code to the console so the login
-     flow is fully testable with zero external services.
-2. `POST /api/auth/verify-otp { phone, code }` — validates the code, creates
+Login is identified by **email address**, not phone number — phone is
+collected later, during profile completion, where it's mandatory and used
+for contact info elsewhere in the app (listings, emergency contact, etc.),
+but it's not the login key. This is deliberate: at the moment someone
+requests an OTP, they may not have an account yet, so email is the one
+thing guaranteed to be available upfront.
+
+1. `POST /api/auth/send-otp { email }` — generates a 4-digit code, stores it
+   in `otp_codes` with a 5-minute expiry, and delivers it by email via
+   [Nodemailer](https://nodemailer.com) (MIT-licensed, `utils/otp.js`)
+   against any SMTP server — a free provider (Brevo, Resend, Gmail with an
+   App Password) or a self-hosted one like Postfix. If SMTP isn't
+   configured, it logs the code to the console instead, so the login flow
+   is fully testable with zero external services.
+2. `POST /api/auth/verify-otp { email, code }` — validates the code, creates
    the user row if it's their first login, and returns a JWT.
 3. The app stores the JWT and sends it as `Authorization: Bearer <token>` on
    every subsequent request.
 4. `GET /api/auth/me` returns the logged-in user's profile.
+5. `PUT /api/auth/me` requires `name` and `phone` — phone becomes mandatory
+   as of profile completion, even though it isn't used for login.
 
 Rate limiting (`express-rate-limit`) caps OTP requests at 5 per 15 minutes per
-IP to prevent SMS-cost abuse.
+IP to prevent email-sending abuse.
 
 ## 6. API reference
 
