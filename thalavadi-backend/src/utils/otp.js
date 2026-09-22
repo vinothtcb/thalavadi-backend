@@ -3,38 +3,45 @@ function generateOtp() {
 }
 
 /**
- * Delivers the OTP by email using Nodemailer (open source) against any SMTP
- * server — a free provider's SMTP (Brevo, Resend, Gmail) or a self-hosted
- * one like Postfix. Email is the only channel now: login is identified by
- * email address (see authController.js), so there's no phone number on
- * file yet at the point an OTP is requested — phone is collected later,
- * during profile completion, and used for contact info elsewhere in the
- * app, not for login.
+ * Delivers the OTP by email via Brevo's HTTPS transactional email API
+ * (https://api.brevo.com/v3/smtp/email), not SMTP. This is deliberate:
+ * Railway (and most cloud hosts) block outbound SMTP ports (25/465/587)
+ * on free/hobby plans to prevent spam abuse — the connection just times
+ * out, even with fully correct SMTP credentials. An HTTPS API call has no
+ * such restriction, since it looks like any other web request.
  *
- * If SMTP isn't configured, this just logs to the console, so the login
- * flow is fully testable without any external service.
+ * Needs BREVO_API_KEY — a real API key (Brevo dashboard → SMTP & API →
+ * API Keys tab), NOT the SMTP key used for the old SMTP_PASSWORD setup.
+ *
+ * If BREVO_API_KEY isn't set, this just logs to the console, so the
+ * login flow is fully testable without any external service.
  */
 async function sendOtpSms(email, code) {
-  if (!process.env.SMTP_HOST) {
-    console.log(`[OTP][smtp not configured] Sending ${code} to ${email}`);
+  if (!process.env.BREVO_API_KEY) {
+    console.log(`[OTP][Brevo API key not configured] Sending ${code} to ${email}`);
     return true;
   }
 
-  // nodemailer is open source (MIT license): https://nodemailer.com
-  const nodemailer = require("nodemailer");
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } : undefined,
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender: { name: "My Thalavadi", email: process.env.SMTP_FROM || "no-reply@thalavadi.local" },
+      to: [{ email }],
+      subject: "Your My Thalavadi login code",
+      textContent: `Your code is ${code}. It expires in ${process.env.OTP_EXPIRY_MINUTES || 5} minutes.`,
+      htmlContent: `<p>Your code is <strong>${code}</strong>. It expires in ${process.env.OTP_EXPIRY_MINUTES || 5} minutes.</p>`,
+    }),
   });
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || "no-reply@thalavadi.local",
-    to: email,
-    subject: "Your My Thalavadi login code",
-    text: `Your code is ${code}. It expires in ${process.env.OTP_EXPIRY_MINUTES || 5} minutes.`,
-  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Brevo API error (${res.status}): ${body}`);
+  }
   return true;
 }
 
