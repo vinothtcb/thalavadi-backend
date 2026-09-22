@@ -32,6 +32,13 @@ const activityLogger = require("./middleware/activityLogger");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
+// Railway (and most PaaS hosts) sit behind their own proxy and add an
+// X-Forwarded-For header. Express needs to be told to trust it, or
+// express-rate-limit can't correctly tell users apart and throws a
+// validation error on every request. `1` means trust exactly one hop
+// (Railway's own proxy) — not a wildcard, so this doesn't open up
+// IP-spoofing via a client-supplied header.
+app.set("trust proxy", 1);
 
 app.use(helmet());
 app.use(cors({
