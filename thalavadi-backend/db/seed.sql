@@ -327,6 +327,31 @@ INSERT INTO bus_schedules (route_name, source, destination, departure_time, bus_
   ('Sathyamangalam - Chennai', 'Sathyamangalam', 'Chennai', '21:45', 'Government', 'SETC, TNSTC Ultra Deluxe, Private Omni', 'via Salem to Villupuram to Tambaram / Koyambedu / KCBT'),
   ('Sathyamangalam - Chennai', 'Sathyamangalam', 'Chennai', '22:30', 'Government', 'SETC, TNSTC Ultra Deluxe, Private Omni', 'via Salem to Villupuram to Tambaram / Koyambedu / KCBT');
 
+-- Chamarajanagar -> Thalavadi direct route (KSRTC)
+INSERT INTO bus_schedules (route_name, source, destination, departure_time, bus_type, operator, notes) VALUES
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '06:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '07:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '08:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '08:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '09:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '09:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '09:45', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '10:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '11:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '11:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '11:45', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '12:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '13:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '13:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '13:45', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '14:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '15:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '15:45', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '16:30', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '17:00', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '17:45', 'Government', 'KSRTC', 'Government / KSRTC service'),
+  ('Chamarajanagar - Thalavadi', 'Chamarajanagar', 'Thalavadi', '19:00', 'Government', 'KSRTC', 'Government / KSRTC service');
+
 
 -- Blood donors (sample — fictional volunteers)
 INSERT INTO blood_donors (name, blood_group, phone, area, is_available) VALUES
@@ -943,6 +968,7 @@ INSERT INTO posting_permissions (type_key, label) VALUES
   ('rental', 'Rentals'),
   ('property', 'Properties'),
   ('event', 'Events'),
+  ('tournament', 'Tournaments'),
   ('job', 'Jobs'),
   ('education', 'Schools & Colleges'),
   ('hospitals', 'Hospitals & Clinics'),

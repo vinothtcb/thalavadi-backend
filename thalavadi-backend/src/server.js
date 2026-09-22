@@ -27,13 +27,22 @@ const farmerRoutes = require("./routes/farmerRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const postingPermissionRoutes = require("./routes/postingPermissionRoutes");
+const { tournamentRouter, teamMatchRouter } = require("./routes/tournamentRoutes");
 const activityLogger = require("./middleware/activityLogger");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://mythalavadi.com",
+    "https://www.mythalavadi.com",
+    "capacitor://localhost",   // the packaged Android app
+    "http://localhost",         // Android WebView sometimes uses this instead
+    "http://localhost:5173",    // local dev server — remove once launch is stable, if you want to lock this down further
+  ],
+}));
 // Raised so base64-encoded multi-resolution images (thumbnail + medium +
 // original bundled together) fit comfortably in one request.
 app.use(express.json({ limit: "15mb" }));
@@ -62,6 +71,8 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/gallery", galleryRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/ride-requests", rideRequestRoutes);
+app.use("/api/tournaments", tournamentRouter);
+app.use("/api/tournament", teamMatchRouter);
 app.use("/api/geocode", geocodeRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/farmer-services", farmerRoutes);

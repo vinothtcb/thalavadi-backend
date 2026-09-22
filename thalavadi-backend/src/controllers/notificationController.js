@@ -27,7 +27,11 @@ const TILE_COUNT_QUERIES = {
 };
 
 // GET /api/notifications/unread-breakdown — one count per dashboard tile,
-// for the tiles the user actually opted into.
+// for the tiles the user actually opted into. Each tile's count is "since
+// that specific tile was last opened" (tile_read_status), falling back to
+// the account-wide last_notifications_read_at for tiles never individually
+// viewed — so a brand new user doesn't see inflated counts for everything
+// that existed before they signed up.
 async function getUnreadBreakdown(req, res, next) {
   try {
     const { rows } = await pool.query(
@@ -38,8 +42,17 @@ async function getUnreadBreakdown(req, res, next) {
     if (!user) return res.status(404).json({ error: "User not found" });
     const prefs = user.notification_preferences || [];
 
+    const { rows: tileReads } = await pool.query(
+      `SELECT tile_key, last_read_at FROM tile_read_status WHERE user_id = $1`,
+      [req.user.sub]
+    );
+    const tileReadMap = Object.fromEntries(tileReads.map((r) => [r.tile_key, r.last_read_at]));
+
     const entries = Object.entries(TILE_COUNT_QUERIES).filter(([, v]) => prefs.includes(v.pref));
-    const results = await Promise.all(entries.map(([key, v]) => pool.query(v.sql, [user.last_notifications_read_at]).then((r) => [key, Number(r.rows[0].count)])));
+    const results = await Promise.all(entries.map(([key, v]) => {
+      const since = tileReadMap[key] || user.last_notifications_read_at;
+      return pool.query(v.sql, [since]).then((r) => [key, Number(r.rows[0].count)]);
+    }));
     res.json(Object.fromEntries(results));
   } catch (err) {
     next(err);
@@ -81,4 +94,22 @@ async function markRead(req, res, next) {
   }
 }
 
-module.exports = { getUnreadCount, getUnreadBreakdown, markRead };
+// POST /api/notifications/mark-tile-read   { tile_key }
+// Call when a specific tile's screen is opened — clears just that tile's
+// badge, leaving every other tile's count untouched.
+async function markTileRead(req, res, next) {
+  try {
+    const { tile_key } = req.body;
+    if (!tile_key || !TILE_COUNT_QUERIES[tile_key]) return res.status(400).json({ error: "Invalid tile_key" });
+    await pool.query(
+      `INSERT INTO tile_read_status (user_id, tile_key, last_read_at) VALUES ($1, $2, now())
+       ON CONFLICT (user_id, tile_key) DO UPDATE SET last_read_at = now()`,
+      [req.user.sub, tile_key]
+    );
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getUnreadCount, getUnreadBreakdown, markRead, markTileRead };

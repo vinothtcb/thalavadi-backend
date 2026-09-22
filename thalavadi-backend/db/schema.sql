@@ -8,9 +8,9 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- for gen_random_uuid()
 -- ─────────────────────────────────────────────
 CREATE TABLE users (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone       VARCHAR(15) UNIQUE NOT NULL,   -- e.g. 9198765XXXXX
+  email       VARCHAR(150) UNIQUE NOT NULL,  -- primary login identifier — OTP is sent here
+  phone       VARCHAR(15),                   -- mandatory as of profile completion, but not the login key (see updateMe)
   name        VARCHAR(100),
-  email       VARCHAR(150),
   location    VARCHAR(150),                  -- e.g. area/village within Thalavadi
   emergency_contact_name   VARCHAR(100),
   emergency_contact_phone  VARCHAR(15),
@@ -33,16 +33,20 @@ CREATE TABLE users (
 -- OTP_CODES
 -- Short-lived codes used to verify a phone number at login.
 -- ─────────────────────────────────────────────
+-- ─────────────────────────────────────────────
+-- OTP_CODES
+-- Short-lived codes used to verify an email address at login.
+-- ─────────────────────────────────────────────
 CREATE TABLE otp_codes (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone       VARCHAR(15) NOT NULL,
+  email       VARCHAR(150) NOT NULL,
   code        VARCHAR(6) NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL,
   verified    BOOLEAN NOT NULL DEFAULT false,
   attempts    INT NOT NULL DEFAULT 0,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_otp_phone ON otp_codes(phone);
+CREATE INDEX idx_otp_email ON otp_codes(email);
 
 -- ─────────────────────────────────────────────
 -- REFRESH_TOKENS
@@ -260,6 +264,21 @@ CREATE TABLE posting_permissions (
 -- recipient's own notification_preferences. See utils/whatsappNotify.js
 -- for why "status" is usually 'queued' rather than 'sent' until a real
 -- WhatsApp Business API provider is configured.
+-- ─────────────────────────────────────────────
+-- TILE_READ_STATUS
+-- Per-user, per-dashboard-tile "last viewed" timestamp — lets opening one
+-- tile (e.g. Return Pickups) clear just that tile's notification count
+-- without affecting any other tile's count. Before this table existed,
+-- there was only one global last_notifications_read_at per user, so
+-- opening any one thing cleared everything.
+-- ─────────────────────────────────────────────
+CREATE TABLE tile_read_status (
+  user_id      UUID NOT NULL REFERENCES users(id),
+  tile_key     VARCHAR(30) NOT NULL,   -- matches TILE_COUNT_QUERIES keys in notificationController.js
+  last_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, tile_key)
+);
+
 -- ─────────────────────────────────────────────
 CREATE TABLE whatsapp_notification_log (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -507,3 +526,122 @@ CREATE TABLE feedback (
   message     TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ─────────────────────────────────────────────
+-- TOURNAMENTS
+-- Replaces "Hotels & Mess" on the More Services row. Covers the full
+-- organizer workflow: Create → Registration → Approve Teams → Generate
+-- Fixtures → Schedule Matches → Enter Results → Points Table → Winner.
+--
+-- Auto-generated fixtures are only implemented for Round Robin and
+-- Knockout — those are well-defined algorithms. Double Elimination and
+-- the knockout stage of League + Knockout rely on the organizer manually
+-- adding matches (tournament_matches supports that for every format
+-- anyway, so it's also how any auto-generated fixture gets corrected).
+-- "Live scores" here means match status + final result entry, not a
+-- ball-by-ball commentary feed — that's a materially bigger feature this
+-- doesn't attempt.
+-- ─────────────────────────────────────────────
+CREATE TABLE tournaments (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                   VARCHAR(150) NOT NULL,
+  sport                  VARCHAR(30) NOT NULL CHECK (sport IN ('Cricket','Football','Volleyball','Kabaddi','Badminton','Chess','Carrom','Esports','Custom')),
+  custom_sport_name      VARCHAR(60),          -- only used when sport = 'Custom'
+  participation_type     VARCHAR(30) NOT NULL DEFAULT 'Team'
+                           CHECK (participation_type IN ('Individual','Team','Pair / Doubles','Team Event','Individual + Team','Custom')),
+  sport_config           JSONB NOT NULL DEFAULT '{}',
+                           -- Free-form, sport-specific settings — deliberately JSONB rather than a
+                           -- rigid column per sport per field (same pattern as businesses.details
+                           -- elsewhere in this app), since each sport needs a different shape:
+                           -- Cricket: {players_per_unit, substitutes, overs_format, custom_overs}
+                           -- Football: {players_per_unit, substitutes}
+                           -- Badminton: {event_type: 'Men''s Singles'|'Doubles'|..., players_per_unit}
+                           -- Chess: {participation_mode: 'Individual'|'Team', boards_per_team, substitutes}
+                           -- All values are organizer-editable defaults, not hard-coded rules.
+  organizer_name         VARCHAR(100),
+  location               VARCHAR(200),
+  start_date             DATE NOT NULL,
+  end_date               DATE,
+  registration_deadline  DATE,
+  entry_fee              VARCHAR(30),          -- free text, e.g. '₹500 per team' — self-reported, not a real payment
+  prize_details          TEXT,
+  rules                  TEXT,
+  format                 VARCHAR(30) NOT NULL
+                           CHECK (format IN ('Knockout','Double Elimination','Round Robin','Group + Knockout','League','Swiss','League + Knockout','Custom')),
+                           -- Auto-generated fixtures exist for Round Robin, Knockout, League (same
+                           -- engine as Round Robin), and Group + Knockout. Double Elimination and
+                           -- Swiss are selectable but rely on the organizer adding matches manually
+                           -- (see tournamentController.js's generateFixtures for why — both are
+                           -- genuinely complex algorithms where a subtly wrong bracket/pairing is
+                           -- worse than no automation at all).
+  status                 VARCHAR(30) NOT NULL DEFAULT 'registration_open'
+                           CHECK (status IN ('registration_open','registration_closed','fixtures_generated','in_progress','completed')),
+  image_url              TEXT,
+  posted_by              UUID REFERENCES users(id),
+  is_active              BOOLEAN NOT NULL DEFAULT true,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_tournaments_start ON tournaments(start_date);
+
+-- ─────────────────────────────────────────────
+-- TOURNAMENT_AGE_CATEGORIES
+-- An organizer can define as many as needed (Under 16, Open, 35+, a
+-- custom age range, or a birth-year range) — teams register into one.
+-- ─────────────────────────────────────────────
+CREATE TABLE tournament_age_categories (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id   UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  label           VARCHAR(50) NOT NULL,   -- e.g. 'Under 16', 'Open', '35+', or a custom label
+  min_age         INT,
+  max_age         INT,
+  birth_year_min  INT,
+  birth_year_max  INT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_age_categories_tournament ON tournament_age_categories(tournament_id);
+
+CREATE TABLE tournament_teams (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id     UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  age_category_id   UUID REFERENCES tournament_age_categories(id),  -- NULL if the tournament has no age categories
+  team_name         VARCHAR(100) NOT NULL,
+  captain_name      VARCHAR(100) NOT NULL,
+  captain_phone     VARCHAR(15) NOT NULL,
+  logo_url          TEXT,
+  payment_status    VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (payment_status IN ('pending','paid','waived')),
+  approval_status   VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (approval_status IN ('pending','approved','rejected')),
+  registered_by     UUID REFERENCES users(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_teams_tournament ON tournament_teams(tournament_id);
+
+CREATE TABLE tournament_players (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id        UUID NOT NULL REFERENCES tournament_teams(id) ON DELETE CASCADE,
+  name           VARCHAR(100) NOT NULL,
+  role           VARCHAR(60),        -- free text — position/role, sport-agnostic (e.g. 'Bowler', 'Goalkeeper')
+  phone          VARCHAR(15),
+  jersey_number  VARCHAR(10),
+  is_captain     BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_players_team ON tournament_players(team_id);
+
+CREATE TABLE tournament_matches (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tournament_id    UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round_name       VARCHAR(50) NOT NULL,  -- e.g. 'Round 1', 'League Round 3', 'Semi-Final', 'Final'
+  team1_id         UUID REFERENCES tournament_teams(id),
+  team2_id         UUID REFERENCES tournament_teams(id),  -- NULL when team1 has a bye
+  scheduled_date   DATE,
+  scheduled_time   TIME,
+  venue            VARCHAR(200),
+  status           VARCHAR(20) NOT NULL DEFAULT 'scheduled'
+                     CHECK (status IN ('scheduled','rescheduled','cancelled','in_progress','completed')),
+  team1_score      VARCHAR(50),   -- free text, sport-agnostic (e.g. '156/4', '2', '3-1')
+  team2_score      VARCHAR(50),
+  winner_team_id   UUID REFERENCES tournament_teams(id),  -- NULL until decided, stays NULL for a draw
+  notes            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_matches_tournament ON tournament_matches(tournament_id);

@@ -51,6 +51,12 @@ const isValidUpiId = (v) => /^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(v || "");
 async function createEvent(req, res, next) {
   try {
     const { title, description, location, start_date, start_time, end_date, end_time, contact_name, contact_phone, image_url, is_paid_event, registration_fee, upi_id, upi_qr_image_url } = req.body;
+    if (req.user.role !== "admin") {
+      const { rows: posterRows } = await pool.query(`SELECT id_verification_status FROM users WHERE id = $1`, [req.user.sub]);
+      if (posterRows[0]?.id_verification_status !== "verified") {
+        return res.status(403).json({ error: "Only ID-verified users can create events. Upload a government ID in Profile → Identity Verification and wait for admin approval." });
+      }
+    }
     if (!title || !start_date || !end_date) return res.status(400).json({ error: "title, start_date and end_date are required" });
     if (contact_phone && !isValidPhone(contact_phone)) return res.status(400).json({ error: "Enter a valid 10-digit contact phone number" });
     if (!isValidImageDataUrl(image_url)) return res.status(400).json({ error: "Invalid image data" });

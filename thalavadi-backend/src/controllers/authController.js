@@ -7,23 +7,24 @@ const { isValidEmail, isValidPhone, isValidImageDataUrl } = require("../utils/va
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 5);
 const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 60);
 
-// POST /api/auth/send-otp   { phone }
+// POST /api/auth/send-otp   { email }
 async function sendOtp(req, res, next) {
   try {
-    const { phone } = req.body;
-    if (!phone || !/^\d{10,15}$/.test(phone)) {
-      return res.status(400).json({ error: "Provide a valid phone number" });
+    const { email } = req.body;
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: "Provide a valid email address" });
     }
+    const normalizedEmail = email.trim().toLowerCase();
 
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await pool.query(
-      `INSERT INTO otp_codes (phone, code, expires_at) VALUES ($1, $2, $3)`,
-      [phone, code, expiresAt]
+      `INSERT INTO otp_codes (email, code, expires_at) VALUES ($1, $2, $3)`,
+      [normalizedEmail, code, expiresAt]
     );
 
-    await sendOtpSms(phone, code);
+    await sendOtpSms(normalizedEmail, code);
 
     res.json({ message: "OTP sent", expires_in_minutes: OTP_EXPIRY_MINUTES });
   } catch (err) {
@@ -45,24 +46,25 @@ async function issueSession(user, deviceId, deviceLabel) {
   return { token, refresh_token: rawRefreshToken };
 }
 
-// POST /api/auth/verify-otp   { phone, code, device_id, device_label }
+// POST /api/auth/verify-otp   { email, code, device_id, device_label }
 async function verifyOtp(req, res, next) {
   try {
-    const { phone, code, device_id, device_label } = req.body;
-    if (!phone || !code) {
-      return res.status(400).json({ error: "phone and code are required" });
+    const { email, code, device_id, device_label } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: "email and code are required" });
     }
+    const normalizedEmail = email.trim().toLowerCase();
 
     const { rows } = await pool.query(
       `SELECT * FROM otp_codes
-       WHERE phone = $1 AND verified = false
+       WHERE email = $1 AND verified = false
        ORDER BY created_at DESC LIMIT 1`,
-      [phone]
+      [normalizedEmail]
     );
     const record = rows[0];
 
     if (!record) {
-      return res.status(400).json({ error: "No OTP requested for this number" });
+      return res.status(400).json({ error: "No OTP requested for this email" });
     }
     if (new Date(record.expires_at) < new Date()) {
       return res.status(400).json({ error: "OTP expired, request a new one" });
@@ -77,11 +79,11 @@ async function verifyOtp(req, res, next) {
 
     await pool.query(`UPDATE otp_codes SET verified = true WHERE id = $1`, [record.id]);
 
-    let { rows: userRows } = await pool.query(`SELECT * FROM users WHERE phone = $1`, [phone]);
+    let { rows: userRows } = await pool.query(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
     let user = userRows[0];
     const isNewUser = !user;
     if (!user) {
-      const inserted = await pool.query(`INSERT INTO users (phone) VALUES ($1) RETURNING *`, [phone]);
+      const inserted = await pool.query(`INSERT INTO users (email) VALUES ($1) RETURNING *`, [normalizedEmail]);
       user = inserted.rows[0];
     }
     await pool.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [user.id]);
@@ -210,14 +212,14 @@ async function getMe(req, res, next) {
   }
 }
 
-const VALID_NOTIFICATION_CATEGORIES = ["news", "events", "classifieds", "rides", "blood_donors"];
+const VALID_NOTIFICATION_CATEGORIES = ["news", "events", "classifieds", "rides", "blood_donors", "tournaments"];
 
 // PUT /api/auth/me
 async function updateMe(req, res, next) {
   try {
-    const { name, email, location, emergency_contact_name, emergency_contact_phone, license_image_url, id_document_image_url, id_document_type, notification_preferences, willing_blood_donor, blood_group } = req.body;
+    const { name, phone, location, emergency_contact_name, emergency_contact_phone, license_image_url, id_document_image_url, id_document_type, notification_preferences, willing_blood_donor, blood_group } = req.body;
     if (!name) return res.status(400).json({ error: "name is required" });
-    if (email && !isValidEmail(email)) return res.status(400).json({ error: "Enter a valid email address" });
+    if (!phone || !isValidPhone(phone)) return res.status(400).json({ error: "Enter a valid 10-digit phone number" });
     if (emergency_contact_phone && !isValidPhone(emergency_contact_phone)) {
       return res.status(400).json({ error: "Enter a valid 10-digit emergency contact number" });
     }
@@ -245,7 +247,7 @@ async function updateMe(req, res, next) {
 
     const { rows } = await pool.query(
       `UPDATE users SET
-         name = $1, email = COALESCE($2, email), location = COALESCE($3, location),
+         name = $1, phone = $2, location = COALESCE($3, location),
          emergency_contact_name = COALESCE($4, emergency_contact_name),
          emergency_contact_phone = COALESCE($5, emergency_contact_phone),
          license_image_url = COALESCE($6, license_image_url),
@@ -257,7 +259,7 @@ async function updateMe(req, res, next) {
          willing_blood_donor = COALESCE($12, willing_blood_donor),
          blood_group = COALESCE($13, blood_group)
        WHERE id = $8 RETURNING id`,
-      [formattedName, email || null, location || null, emergency_contact_name || null, emergency_contact_phone || null, license_image_url || null, prefsArray, req.user.sub, id_document_image_url || null, id_document_type || null, submittingNewId, willing_blood_donor, blood_group || null]
+      [formattedName, phone, location || null, emergency_contact_name || null, emergency_contact_phone || null, license_image_url || null, prefsArray, req.user.sub, id_document_image_url || null, id_document_type || null, submittingNewId, willing_blood_donor, blood_group || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "User not found" });
 
@@ -272,7 +274,7 @@ async function updateMe(req, res, next) {
         await pool.query(
           `INSERT INTO blood_donors (name, blood_group, phone, area, is_available, user_id)
            VALUES ($1,$2,$3,$4,true,$5)
-           ON CONFLICT (user_id) DO UPDATE SET name = $1, blood_group = $2, phone = $3, area = $4, is_available = true`,
+           ON CONFLICT (user_id) WHERE user_id IS NOT NULL DO UPDATE SET name = $1, blood_group = $2, phone = $3, area = $4, is_available = true`,
           [full[0].name, full[0].blood_group, full[0].phone, full[0].location || null, req.user.sub]
         );
       } else if (willing_blood_donor === false) {

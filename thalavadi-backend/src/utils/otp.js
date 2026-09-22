@@ -3,58 +3,20 @@ function generateOtp() {
 }
 
 /**
- * Delivers the OTP using an open-source channel, selected via OTP_CHANNEL:
+ * Delivers the OTP by email using Nodemailer (open source) against any SMTP
+ * server — a free provider's SMTP (Brevo, Resend, Gmail) or a self-hosted
+ * one like Postfix. Email is the only channel now: login is identified by
+ * email address (see authController.js), so there's no phone number on
+ * file yet at the point an OTP is requested — phone is collected later,
+ * during profile completion, and used for contact info elsewhere in the
+ * app, not for login.
  *
- *  - "kannel" (default): Kannel (https://www.kannel.org) is a free, open-source
- *    SMS gateway you self-host on a small Linux box with a GSM modem/SIM, or
- *    point at any provider that exposes Kannel's simple HTTP "sendsms" API.
- *    No vendor lock-in, no per-message SaaS fee beyond your SIM's SMS cost.
- *
- *  - "email": sends the code by email instead of SMS, using Nodemailer
- *    (open source) against any SMTP server — including a self-hosted one
- *    like Postfix. Useful if you don't want to run SMS hardware at all.
- *
- * Both paths just log to the console if not configured, so the login flow
- * is fully testable without any external service.
+ * If SMTP isn't configured, this just logs to the console, so the login
+ * flow is fully testable without any external service.
  */
-async function sendOtpSms(phone, code) {
-  const channel = process.env.OTP_CHANNEL || "kannel";
-
-  if (channel === "kannel") {
-    return sendViaKannel(phone, code);
-  }
-  if (channel === "email") {
-    return sendViaEmail(phone, code);
-  }
-
-  console.log(`[OTP] Unknown OTP_CHANNEL "${channel}", falling back to console log: ${code} -> ${phone}`);
-  return true;
-}
-
-async function sendViaKannel(phone, code) {
-  const url = process.env.KANNEL_URL; // e.g. http://localhost:13013/cgi-bin/sendsms
-  if (!url) {
-    console.log(`[OTP][kannel not configured] Sending ${code} to ${phone}`);
-    return true;
-  }
-
-  const params = new URLSearchParams({
-    username: process.env.KANNEL_USER || "",
-    password: process.env.KANNEL_PASSWORD || "",
-    to: phone,
-    text: `Your Thalavadi Directory code is ${code}`,
-  });
-
-  const res = await fetch(`${url}?${params.toString()}`);
-  if (!res.ok) {
-    throw new Error(`Kannel gateway responded with ${res.status}`);
-  }
-  return true;
-}
-
-async function sendViaEmail(recipientEmail, code) {
+async function sendOtpSms(email, code) {
   if (!process.env.SMTP_HOST) {
-    console.log(`[OTP][smtp not configured] Sending ${code} to ${recipientEmail}`);
+    console.log(`[OTP][smtp not configured] Sending ${code} to ${email}`);
     return true;
   }
 
@@ -69,8 +31,8 @@ async function sendViaEmail(recipientEmail, code) {
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || "no-reply@thalavadi.local",
-    to: recipientEmail,
-    subject: "Your Thalavadi Directory login code",
+    to: email,
+    subject: "Your My Thalavadi login code",
     text: `Your code is ${code}. It expires in ${process.env.OTP_EXPIRY_MINUTES || 5} minutes.`,
   });
   return true;
